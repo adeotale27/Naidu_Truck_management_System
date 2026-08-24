@@ -1,0 +1,256 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  pinHash   String
+  role      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  paymentsCollected Payment[] @relation("PaymentCollector")
+  podsCaptured      POD[]     @relation("PodDriver")
+  tripsDriven       Trip[]    @relation("TripDriverUser")
+}
+
+model Truck {
+  id             String    @id @default(cuid())
+  registrationNo String    @unique
+  type           String
+  capacityTons   Float
+  ownership      String
+  status         String
+  insuranceExpiry DateTime?
+  permitExpiry    DateTime?
+  pucExpiry       DateTime?
+  fitnessExpiry   DateTime?
+  notes          String?
+  active         Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  trips Trip[]
+
+  @@index([status])
+  @@index([registrationNo])
+}
+
+model Driver {
+  id            String    @id @default(cuid())
+  name          String
+  phone         String
+  licenseNo     String    @unique
+  licenseExpiry DateTime?
+  active        Boolean   @default(true)
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  trips Trip[]
+
+  @@index([name])
+}
+
+model Party {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String?
+  gstin     String?
+  address   String?
+  city      String?
+  partyType String   @default("BOTH")
+  notes     String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  consignmentsAsConsignor Consignment[] @relation("Consignor")
+  consignmentsAsConsignee Consignment[] @relation("Consignee")
+  payments                Payment[]
+
+  @@index([name])
+  @@index([city])
+  @@index([phone])
+}
+
+model Route {
+  id              String   @id @default(cuid())
+  name            String
+  origin          String
+  destination     String
+  distanceKm      Float?
+  standardFreight Float?
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  trips Trip[]
+
+  @@unique([origin, destination])
+}
+
+model Trip {
+  id            String    @id @default(cuid())
+  tripNumber    String    @unique
+  truckId       String
+  driverId      String
+  routeId       String
+  direction     String
+  tripDate      DateTime
+  departureAt   DateTime?
+  arrivalAt     DateTime?
+  status        String    @default("PLANNED")
+  startOdometer Float?
+  endOdometer   Float?
+  notes         String?
+  cancelled     Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  createdById   String?
+
+  truck         Truck         @relation(fields: [truckId], references: [id])
+  driver        Driver        @relation(fields: [driverId], references: [id])
+  route         Route         @relation(fields: [routeId], references: [id])
+  createdBy     User?         @relation("TripDriverUser", fields: [createdById], references: [id])
+  consignments  Consignment[]
+  expenses      Expense[]
+
+  @@index([tripDate])
+  @@index([status])
+  @@index([truckId])
+  @@index([routeId])
+  @@index([tripNumber])
+}
+
+model Consignment {
+  id               String    @id @default(cuid())
+  lrNumber         String    @unique
+  tripId           String
+  consignorId      String
+  consigneeId      String
+  origin           String
+  destination      String
+  goodsDescription String
+  packageCount     Int
+  weightKg         Float?
+  declaredValue    Float?
+  freightAmount    Float
+  paymentType      String
+  freightPaidAmount Float    @default(0)
+  balanceDue       Float     @default(0)
+  status           String    @default("BOOKED")
+  remarks          String?
+  cancelled        Boolean   @default(false)
+  bookedAt         DateTime  @default(now())
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  createdById      String?
+
+  trip      Trip              @relation(fields: [tripId], references: [id])
+  consignor Party             @relation("Consignor", fields: [consignorId], references: [id])
+  consignee Party             @relation("Consignee", fields: [consigneeId], references: [id])
+  items     ConsignmentItem[]
+  pod       POD?
+  payments  Payment[]
+
+  @@index([lrNumber])
+  @@index([tripId])
+  @@index([consignorId])
+  @@index([consigneeId])
+  @@index([status])
+  @@index([bookedAt])
+}
+
+model ConsignmentItem {
+  id             String @id @default(cuid())
+  consignmentId  String
+  description    String
+  packageCount   Int    @default(1)
+  weightKg       Float?
+  declaredValue  Float?
+
+  consignment Consignment @relation(fields: [consignmentId], references: [id], onDelete: Cascade)
+}
+
+model POD {
+  id             String   @id @default(cuid())
+  consignmentId  String   @unique
+  receiverName   String
+  receiverPhone  String?
+  deliveredAt    DateTime
+  photoPath      String?
+  signaturePath  String?
+  remarks        String?
+  driverId       String?
+  createdAt      DateTime @default(now())
+
+  consignment Consignment @relation(fields: [consignmentId], references: [id])
+  driver      User?       @relation("PodDriver", fields: [driverId], references: [id])
+}
+
+model Payment {
+  id             String   @id @default(cuid())
+  partyId        String
+  consignmentId  String?
+  amount         Float
+  mode           String
+  purpose        String
+  collectedAt    DateTime @default(now())
+  collectorId    String?
+  reference      String?
+  notes          String?
+  cancelled      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  party       Party        @relation(fields: [partyId], references: [id])
+  consignment Consignment? @relation(fields: [consignmentId], references: [id])
+  collector   User?        @relation("PaymentCollector", fields: [collectorId], references: [id])
+
+  @@index([collectedAt])
+  @@index([partyId])
+  @@index([consignmentId])
+}
+
+model Expense {
+  id        String   @id @default(cuid())
+  tripId    String
+  type      String
+  amount    Float
+  date      DateTime @default(now())
+  notes     String?
+  cancelled Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  trip Trip @relation(fields: [tripId], references: [id])
+
+  @@index([tripId])
+  @@index([date])
+}
+
+model NumberSequence {
+  id      String @id @default(cuid())
+  kind    String
+  year    Int
+  current Int    @default(0)
+
+  @@unique([kind, year])
+}
+
+model CompanySettings {
+  id           String @id @default("default")
+  name         String
+  address      String
+  phone        String
+  gstin        String?
+  email        String?
+  lrDisclaimer String?
+  updatedAt    DateTime @updatedAt
+}
